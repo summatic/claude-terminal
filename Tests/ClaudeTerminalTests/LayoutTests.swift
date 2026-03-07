@@ -159,7 +159,8 @@ final class PaneLayoutTests: XCTestCase {
 
     func testAgentColorCyclesAfter8() {
         let usedColors = AgentColor.allCases  // all 8 used
-        let nextColor = AgentColor(rawValue: usedColors.count % AgentColor.allCases.count)!
+        // No force-unwrap: use safe array subscript (same as fixed AppState code)
+        let nextColor = AgentColor.allCases[usedColors.count % AgentColor.allCases.count]
         XCTAssertEqual(nextColor, .blue)  // wraps to 0
     }
 }

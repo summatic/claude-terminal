@@ -45,14 +45,11 @@ final class AppState: ObservableObject {
     }
 
     func newRemoteSession(host: String, sshPort: Int = 22, wsPort: Int = 9901) {
-        // Validate SSH port range
-        guard (1...65535).contains(sshPort) else {
+        guard isValidSSHPort(sshPort) else {
             print("[AppState] Invalid SSH port: \(sshPort)")
             return
         }
-        // Sanitize host: reject control chars and NUL bytes
-        guard !host.isEmpty,
-              host.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else {
+        guard isValidHost(host) else {
             print("[AppState] Invalid host: \(host)")
             return
         }
@@ -265,20 +262,7 @@ final class AppState: ObservableObject {
         return words.joined(separator: " ")
     }
 
-    /// Validate file path to prevent path traversal:
-    /// - Must be absolute
-    /// - Must not contain ".." components
-    /// - Must not access sensitive system directories
-    private func isValidFilePath(_ path: String) -> Bool {
-        guard path.hasPrefix("/") else { return false }
-        let url = URL(fileURLWithPath: path).standardized
-        let normalized = url.path
-        // Reject path traversal
-        guard !normalized.contains("..") else { return false }
-        // Reject sensitive system paths
-        let blocked = ["/etc/", "/private/etc/", "/usr/", "/bin/", "/sbin/"]
-        return !blocked.contains(where: { normalized.hasPrefix($0) })
-    }
+    // isValidFilePath, isValidSSHPort, isValidHost defined in Validation.swift
 
     // MARK: - Keyboard Commands
 

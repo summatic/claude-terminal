@@ -76,7 +76,7 @@ final class Session: ObservableObject, Identifiable {
         // Assign color to new agent
         let usedColors = allPanes.compactMap { $0.agentInfo?.color }
         let nextColor = AgentColor.allCases.first { !usedColors.contains($0) }
-            ?? AgentColor(rawValue: usedColors.count % AgentColor.allCases.count)!
+            ?? AgentColor.allCases[usedColors.count % AgentColor.allCases.count]
 
         let childInfo = AgentInfo(
             agentID: event.agentID,
