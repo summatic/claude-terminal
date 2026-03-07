@@ -107,6 +107,29 @@ def build_event(hook_data: dict) -> dict:
 
     return event
 
+# ── Rate Limit Event (Phase 9) ────────────────────────────────────────────────
+
+def build_rate_limit_event(hook_data: dict) -> dict | None:
+    """
+    레이트 리밋 해제 시각이 환경변수에 설정된 경우 RateLimited 이벤트를 반환합니다.
+
+    사용 예) Claude Code 래퍼 스크립트에서:
+      export CLAUDE_RATE_LIMIT_RESET_AT="2026-03-07T16:30:00Z"
+      python3 ~/.claude/hooks/notify-terminal.py
+    """
+    reset_at = os.environ.get("CLAUDE_RATE_LIMIT_RESET_AT", "").strip()
+    if not reset_at:
+        return None
+
+    session_id = hook_data.get("session_id", "")
+    return {
+        "type": "RateLimited",
+        "agentID": sanitize_string(str(session_id), 256) or "system",
+        "sessionID": sanitize_string(str(session_id), 256),
+        "rateLimitResetAt": sanitize_string(reset_at, 64),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
 # ── Local IPC: Unix socket + HMAC authentication ───────────────────────────────
 
 def read_pid_file() -> tuple[str, str]:
@@ -188,8 +211,16 @@ def main():
 
     if IS_REMOTE:
         send_remote(event)
+        # 레이트 리밋 이벤트도 전송 (Phase 9)
+        rate_limit_event = build_rate_limit_event(hook_data)
+        if rate_limit_event:
+            send_remote(rate_limit_event)
     else:
         send_local(event)
+        # 레이트 리밋 이벤트도 전송 (Phase 9)
+        rate_limit_event = build_rate_limit_event(hook_data)
+        if rate_limit_event:
+            send_local(rate_limit_event)
 
     # Always exit 0 — never block Claude Code
     sys.exit(0)

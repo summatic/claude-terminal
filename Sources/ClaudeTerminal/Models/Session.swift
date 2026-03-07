@@ -19,6 +19,8 @@ final class Session: ObservableObject, Identifiable {
     @Published var activePaneID: UUID?
     /// 로컬/원격 연결 종류
     @Published var connectionType: ConnectionType
+    /// 작업 디렉터리의 Git 브랜치 이름 (Phase 12)
+    @Published var gitBranch: String? = nil
     let createdAt: Date
 
     init(
@@ -39,6 +41,13 @@ final class Session: ObservableObject, Identifiable {
     }
 
     var allPanes: [AgentPane] { layout.allPanes }
+
+    /// 모든 에이전트가 접근한 (agentID, filePath) 쌍 목록 (Phase 11 파일 사이드바용)
+    var allTouchedFiles: [(agentID: String, filePath: String)] {
+        allPanes.compactMap { $0.agentInfo }.flatMap { info in
+            info.touchedFiles.map { (info.agentID, $0) }
+        }
+    }
 
     var activePane: AgentPane? {
         guard let id = activePaneID else { return nil }
@@ -132,6 +141,53 @@ final class Session: ObservableObject, Identifiable {
         allPanes
             .filter { $0.agentInfo?.agentID == agentID }
             .forEach { $0.agentInfo?.touchedFiles.insert(filePath) }
+    }
+
+    /// 에이전트가 툴을 호출할 때마다 카운터를 증가시킵니다 (Phase 8 메트릭).
+    func incrementToolCall(agentID: String, toolName: String?) {
+        allPanes
+            .filter { $0.agentInfo?.agentID == agentID }
+            .forEach {
+                $0.agentInfo?.toolCallCount += 1
+                $0.agentInfo?.lastToolName = toolName
+            }
+    }
+
+    // MARK: - Git Branch (Phase 12)
+
+    /// 지정 디렉터리의 Git 브랜치를 비동기로 읽어 `gitBranch`를 갱신합니다.
+    func refreshGitBranch(in directory: String) {
+        Task {
+            let branch = await Self.readGitBranch(in: directory)
+            await MainActor.run { self.gitBranch = branch }
+        }
+    }
+
+    private static func readGitBranch(in directory: String) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                let proc = Process()
+                proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+                proc.arguments = ["-C", directory, "rev-parse", "--abbrev-ref", "HEAD"]
+                proc.currentDirectoryURL = URL(fileURLWithPath: directory)
+                let pipe = Pipe()
+                proc.standardOutput = pipe
+                proc.standardError = Pipe()
+                do {
+                    try proc.run()
+                    proc.waitUntilExit()
+                    guard proc.terminationStatus == 0 else {
+                        return continuation.resume(returning: nil)
+                    }
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    let branch = String(data: data, encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    continuation.resume(returning: branch?.isEmpty == true ? nil : branch)
+                } catch {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
     }
 
     // MARK: - Helpers

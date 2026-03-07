@@ -70,10 +70,22 @@ struct SessionTab: View {
                 .fill(session.connectionType.isRemote ? Color.orange : Color.green)
                 .frame(width: 6, height: 6)
 
-            Text(session.name)
-                .font(.system(size: 12, weight: isActive ? .semibold : .regular))
-                .foregroundColor(isActive ? .white : .white.opacity(0.6))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(session.name)
+                    .font(.system(size: 12, weight: isActive ? .semibold : .regular))
+                    .foregroundColor(isActive ? .white : .white.opacity(0.6))
+                    .lineLimit(1)
+                // Git 브랜치 표시 (Phase 12)
+                if let branch = session.gitBranch {
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.system(size: 8))
+                        Text(branch)
+                            .font(.system(size: 9))
+                    }
+                    .foregroundColor(.white.opacity(0.35))
+                }
+            }
 
             // Active agent count badge
             let agentCount = session.allPanes.filter { $0.agentInfo != nil }.count

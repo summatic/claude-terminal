@@ -69,13 +69,17 @@ struct AgentInfo: Identifiable, Codable, Equatable {
     var status: AgentStatus
     /// 패인 헤더의 컬러 액센트 및 상태 도트 색상
     var color: AgentColor
-    /// 이 에이전트가 접근한 파일 경로 집합 (Phase 5 파일트리 시각화용)
+    /// 이 에이전트가 접근한 파일 경로 집합 (Phase 11 파일트리 시각화용)
     var touchedFiles: Set<String>
     /// 부모 에이전트의 `agentID`. 루트 에이전트면 `nil`.
     var parentAgentID: String?
     /// Task 툴에 전달된 태스크 설명 (패인 헤더 툴팁으로 표시)
     var taskDescription: String?
     var spawnedAt: Date
+    /// 이 에이전트가 호출한 총 툴 횟수 (Phase 8 메트릭)
+    var toolCallCount: Int
+    /// 가장 최근에 호출한 툴 이름 (Phase 8 메트릭)
+    var lastToolName: String?
 
     init(
         id: UUID = UUID(),
@@ -86,7 +90,9 @@ struct AgentInfo: Identifiable, Codable, Equatable {
         touchedFiles: Set<String> = [],
         parentAgentID: String? = nil,
         taskDescription: String? = nil,
-        spawnedAt: Date = Date()
+        spawnedAt: Date = Date(),
+        toolCallCount: Int = 0,
+        lastToolName: String? = nil
     ) {
         self.id = id
         self.agentID = agentID
@@ -97,7 +103,22 @@ struct AgentInfo: Identifiable, Codable, Equatable {
         self.parentAgentID = parentAgentID
         self.taskDescription = taskDescription
         self.spawnedAt = spawnedAt
+        self.toolCallCount = toolCallCount
+        self.lastToolName = lastToolName
     }
+}
+
+// MARK: - Permission Request (Phase 10)
+
+/// 에이전트가 툴 실행 전 사용자 승인을 요청할 때 생성되는 구조체.
+/// `AppState.pendingPermissions`에 누적되며 `ActivityStreamView`에서 표시됩니다.
+struct PermissionRequest: Identifiable, Codable {
+    let id: UUID
+    let agentID: String
+    let toolName: String
+    let toolInput: [String: String]
+    let sessionID: String?
+    let requestedAt: Date
 }
 
 // MARK: - Hook Event (Hook → App via IPC)
@@ -113,12 +134,16 @@ enum HookEventType: String, Codable {
     case postToolUse  = "PostToolUse"
     /// 에이전트 상태 변경 (thinking/writing/running 등)
     case agentStatus  = "AgentStatus"
-    /// 에이전트가 파일을 읽거나 쓴 이벤트 (Phase 5 파일트리 시각화용)
+    /// 에이전트가 파일을 읽거나 쓴 이벤트 (Phase 11 파일트리 시각화용)
     case fileTouched  = "FileTouched"
     /// Claude Code 세션 시작
     case sessionStart = "SessionStart"
     /// Claude Code 세션 종료
     case sessionEnd   = "SessionEnd"
+    /// API 레이트 리밋 도달 (Phase 9)
+    case rateLimited  = "RateLimited"
+    /// 툴 실행 전 사용자 승인 요청 (Phase 10)
+    case permissionRequest = "PermissionRequest"
 }
 
 /// IPC(Unix Socket 또는 HTTP POST)로 전달되는 훅 이벤트 페이로드.
@@ -149,6 +174,8 @@ struct HookEvent: Codable {
     let fileOperation: String?
     /// `preToolUse(Task)` 이벤트일 때 태스크 설명 (패인 헤더에 표시)
     let taskDescription: String?
+    /// `rateLimited` 이벤트일 때 레이트 리밋 해제 시각 (ISO8601, Phase 9)
+    let rateLimitResetAt: String?
     let timestamp: Date
 
     init(
@@ -162,6 +189,7 @@ struct HookEvent: Codable {
         filePath: String? = nil,
         fileOperation: String? = nil,
         taskDescription: String? = nil,
+        rateLimitResetAt: String? = nil,
         timestamp: Date = Date()
     ) {
         self.type = type
@@ -174,6 +202,7 @@ struct HookEvent: Codable {
         self.filePath = filePath
         self.fileOperation = fileOperation
         self.taskDescription = taskDescription
+        self.rateLimitResetAt = rateLimitResetAt
         self.timestamp = timestamp
     }
 }

@@ -56,6 +56,18 @@ struct ClaudeTerminalApp: App {
 
                 Divider()
 
+                Button("Toggle Activity Stream") {
+                    appState.handleKeyboardCommand(.toggleActivityStream)
+                }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+
+                Button("Toggle File Sidebar") {
+                    appState.handleKeyboardCommand(.toggleFileSidebar)
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+
+                Divider()
+
                 // Switch sessions 1-9
                 ForEach(0..<9, id: \.self) { index in
                     Button("Switch to Session \(index + 1)") {

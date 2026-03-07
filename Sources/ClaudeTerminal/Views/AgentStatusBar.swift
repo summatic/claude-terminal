@@ -5,6 +5,8 @@ import SwiftUI
 struct AgentStatusBar: View {
 
     @ObservedObject var session: Session
+    /// 레이트 리밋 해제 예정 시각 (nil이면 표시 안 함, Phase 9)
+    var rateLimitResetAt: Date? = nil
 
     var activeAgents: [AgentInfo] {
         session.allPanes.compactMap { $0.agentInfo }
@@ -23,6 +25,12 @@ struct AgentStatusBar: View {
             }
 
             Spacer()
+
+            // 레이트 리밋 카운트다운 (Phase 9)
+            if let resetAt = rateLimitResetAt {
+                RateLimitBadge(resetAt: resetAt)
+                    .padding(.trailing, 4)
+            }
 
             // Pane count
             Text("\(session.allPanes.count) pane\(session.allPanes.count == 1 ? "" : "s")")
@@ -58,5 +66,29 @@ struct AgentPill: View {
             Capsule()
                 .stroke(info.color.swiftUIColor.opacity(0.3), lineWidth: 0.5)
         )
+    }
+}
+
+// MARK: - Rate Limit Badge (Phase 9)
+
+/// 레이트 리밋 해제까지 남은 시간을 실시간으로 보여주는 배지.
+private struct RateLimitBadge: View {
+
+    let resetAt: Date
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "pause.circle.fill")
+                .font(.system(size: 10))
+                .foregroundColor(.orange)
+            Text(resetAt, style: .relative)
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundColor(.orange)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color.orange.opacity(0.12))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.orange.opacity(0.3), lineWidth: 0.5))
     }
 }

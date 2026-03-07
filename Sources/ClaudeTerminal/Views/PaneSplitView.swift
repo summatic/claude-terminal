@@ -25,21 +25,35 @@ struct PaneSplitView: View {
 
         case .hsplit(let left, let right, let ratio):
             GeometryReader { geo in
-                HStack(spacing: 2) {
+                HStack(spacing: 0) {
                     layoutView(for: left)
-                        .frame(width: geo.size.width * ratio - 1)
+                        .frame(width: max(0, geo.size.width * ratio - 2))
+                    PaneDivider(
+                        axis: .horizontal,
+                        anchorPaneID: left.allPanes[0].id,
+                        containerSize: geo.size.width,
+                        currentRatio: ratio,
+                        session: session
+                    )
                     layoutView(for: right)
-                        .frame(width: geo.size.width * (1 - ratio) - 1)
+                        .frame(width: max(0, geo.size.width * (1 - ratio) - 2))
                 }
             }
 
         case .vsplit(let top, let bottom, let ratio):
             GeometryReader { geo in
-                VStack(spacing: 2) {
+                VStack(spacing: 0) {
                     layoutView(for: top)
-                        .frame(height: geo.size.height * ratio - 1)
+                        .frame(height: max(0, geo.size.height * ratio - 2))
+                    PaneDivider(
+                        axis: .vertical,
+                        anchorPaneID: top.allPanes[0].id,
+                        containerSize: geo.size.height,
+                        currentRatio: ratio,
+                        session: session
+                    )
                     layoutView(for: bottom)
-                        .frame(height: geo.size.height * (1 - ratio) - 1)
+                        .frame(height: max(0, geo.size.height * (1 - ratio) - 2))
                 }
             }
         }
@@ -60,6 +74,63 @@ struct PaneSplitView: View {
             PanePlaceholderView(pane: pane)
                 .onTapGesture { onActivatePane?(pane.id) }
         }
+    }
+}
+
+// MARK: - Draggable Divider (Phase 7)
+
+/// 드래그로 패인 비율을 조절하는 분할선.
+/// `session.layout.updatingRatio(_:forSplitContaining:)`를 호출해 레이아웃을 갱신합니다.
+private struct PaneDivider: View {
+
+    let axis: Axis
+    let anchorPaneID: UUID
+    let containerSize: CGFloat
+    let currentRatio: CGFloat
+    let session: Session
+
+    /// 드래그 시작 시점의 비율. 제스처 중 `currentRatio` 변경에 영향받지 않도록 캡처.
+    @State private var startRatio: CGFloat? = nil
+    @State private var isHovered = false
+
+    var body: some View {
+        Rectangle()
+            .fill(isHovered ? Color.white.opacity(0.3) : Color.white.opacity(0.08))
+            .frame(
+                width: axis == .horizontal ? 4 : nil,
+                height: axis == .vertical ? 4 : nil
+            )
+            .onHover { hovering in
+                isHovered = hovering
+                if hovering {
+                    (axis == .horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        // 첫 이벤트에서 시작 비율 캡처 (이후 currentRatio가 변해도 기준점 유지)
+                        let base: CGFloat
+                        if let s = startRatio {
+                            base = s
+                        } else {
+                            base = currentRatio
+                            startRatio = currentRatio
+                        }
+                        guard containerSize > 0 else { return }
+                        let delta = axis == .horizontal
+                            ? value.translation.width
+                            : value.translation.height
+                        let newRatio = (base * containerSize + delta) / containerSize
+                        session.layout = session.layout.updatingRatio(
+                            min(max(newRatio, 0.1), 0.9),
+                            forSplitContaining: anchorPaneID
+                        )
+                    }
+                    .onEnded { _ in startRatio = nil }
+            )
     }
 }
 

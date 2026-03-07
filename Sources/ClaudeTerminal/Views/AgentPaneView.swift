@@ -51,6 +51,18 @@ struct AgentPaneView: View {
 
             Spacer()
 
+            // 메트릭 칩 (Phase 8) — 툴 호출 횟수 + 런타임
+            if let info = pane.agentInfo {
+                if info.toolCallCount > 0 {
+                    Label("\(info.toolCallCount)", systemImage: "wrench.and.screwdriver.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                Text(info.spawnedAt, style: .timer)
+                    .font(.system(size: 10).monospacedDigit())
+                    .foregroundColor(.white.opacity(0.3))
+            }
+
             // Task description (truncated)
             if let task = pane.agentInfo?.taskDescription {
                 Text(task)

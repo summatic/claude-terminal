@@ -31,6 +31,23 @@ final class AppState: ObservableObject {
 
     @Published var ptyProcesses: [UUID: PTYProcess] = [:]
 
+    // MARK: - Rate Limit (Phase 9)
+
+    /// 레이트 리밋 해제 예정 시각. nil이면 리밋 없음.
+    @Published var rateLimitResetAt: Date? = nil
+
+    // MARK: - Activity Stream (Phase 10)
+
+    /// 미처리 승인 요청 목록
+    @Published var pendingPermissions: [PermissionRequest] = []
+    /// Activity Stream 사이드바 표시 여부
+    @Published var showActivityStream: Bool = false
+
+    // MARK: - File Sidebar (Phase 11)
+
+    /// 파일 접근 사이드바 표시 여부
+    @Published var showFileSidebar: Bool = false
+
     // MARK: - IPC Servers
 
     private let ipcServer = IPCServer()
@@ -53,6 +70,9 @@ final class AppState: ObservableObject {
         if let pane = session.layout.allPanes.first {
             launchPTY(for: pane, in: session)
         }
+        // Git 브랜치 감지 (Phase 12)
+        let workingDir = FileManager.default.homeDirectoryForCurrentUser.path
+        session.refreshGitBranch(in: workingDir)
     }
 
     /// 원격 SSH 세션을 생성합니다.
@@ -213,9 +233,11 @@ final class AppState: ObservableObject {
     /// | 이벤트 | 처리 |
     /// |--------|------|
     /// | `preToolUse(Task)` | 서브에이전트 패인 자동 분할 |
-    /// | `postToolUse(Task)` | 서브에이전트 상태 `.done` 으로 갱신 |
+    /// | `postToolUse` | 툴 호출 카운트 증가; Task 완료 시 상태 `.done` 갱신 |
     /// | `agentStatus` | 해당 에이전트 상태 갱신 |
     /// | `fileTouched` | 파일 경로 검증 후 `touchedFiles`에 추가 |
+    /// | `rateLimited` | 레이트 리밋 타이머 설정 (Phase 9) |
+    /// | `permissionRequest` | 승인 요청 목록에 추가 + Activity Stream 표시 (Phase 10) |
     func handleHookEvent(_ event: HookEvent) {
         // Find the target session (by sessionID or use active)
         let targetSession: Session
@@ -229,11 +251,16 @@ final class AppState: ObservableObject {
         }
 
         switch event.type {
-        case .preToolUse where event.toolName == "Task":
-            handleSubAgentSpawn(event: event, in: targetSession)
+        case .preToolUse:
+            if event.toolName == "Task" {
+                handleSubAgentSpawn(event: event, in: targetSession)
+            }
 
-        case .postToolUse where event.toolName == "Task":
-            if let agentID = event.toolInput?["agent_id"] {
+        case .postToolUse:
+            // 모든 툴 호출 카운트 증가 (Phase 8)
+            targetSession.incrementToolCall(agentID: event.agentID, toolName: event.toolName)
+            // Task 완료 시 서브에이전트 상태 done으로 갱신
+            if event.toolName == "Task", let agentID = event.toolInput?["agent_id"] {
                 targetSession.updateAgentStatus(agentID: agentID, status: .done)
             }
 
@@ -246,6 +273,34 @@ final class AppState: ObservableObject {
             if let path = event.filePath, isValidFilePath(path) {
                 targetSession.recordFileTouched(agentID: event.agentID, filePath: path)
             }
+
+        case .rateLimited:
+            // 레이트 리밋 타이머 설정 (Phase 9)
+            if let resetStr = event.rateLimitResetAt {
+                let formatter = ISO8601DateFormatter()
+                if let resetDate = formatter.date(from: resetStr) {
+                    rateLimitResetAt = resetDate
+                    // 해제 시각 도달 후 자동 클리어
+                    let delay = max(0, resetDate.timeIntervalSinceNow)
+                    Task {
+                        try? await Task.sleep(nanoseconds: UInt64((delay + 1) * 1_000_000_000))
+                        await MainActor.run { self.rateLimitResetAt = nil }
+                    }
+                }
+            }
+
+        case .permissionRequest:
+            // Activity Stream에 승인 요청 추가 (Phase 10)
+            let req = PermissionRequest(
+                id: UUID(),
+                agentID: event.agentID,
+                toolName: event.toolName ?? "unknown",
+                toolInput: event.toolInput ?? [:],
+                sessionID: event.sessionID,
+                requestedAt: event.timestamp
+            )
+            pendingPermissions.append(req)
+            showActivityStream = true
 
         default:
             break
@@ -260,6 +315,12 @@ final class AppState: ObservableObject {
         }
         guard let pane = childPane else { return }
         launchPTY(for: pane, in: session)
+    }
+
+    // MARK: - Permission Resolution (Phase 10)
+
+    func resolvePermission(id: UUID) {
+        pendingPermissions.removeAll { $0.id == id }
     }
 
     // isValidFilePath, isValidSSHPort, isValidHost defined in Validation.swift
@@ -280,6 +341,10 @@ final class AppState: ObservableObject {
             if index < sessions.count {
                 activeSessionID = sessions[index].id
             }
+        case .toggleActivityStream:
+            showActivityStream.toggle()
+        case .toggleFileSidebar:
+            showFileSidebar.toggle()
         }
     }
 }
@@ -292,4 +357,6 @@ enum KeyboardCommand {
     case splitHorizontal
     case splitVertical
     case switchSession(Int)
+    case toggleActivityStream
+    case toggleFileSidebar
 }

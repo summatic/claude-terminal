@@ -11,28 +11,49 @@ struct ContentView: View {
             // Tab bar
             SessionTabBar(appState: appState)
 
-            // Session workspace
+            // Session workspace + sidebars (Phase 10/11)
             if let session = appState.activeSession {
-                SessionWorkspaceView(
-                    session: session,
-                    ptyProcesses: appState.ptyProcesses,
-                    onActivatePane: { paneID in
-                        appState.activatePane(id: paneID, in: session)
-                    },
-                    onClosePane: { paneID in
-                        appState.closePane(id: paneID, in: session)
-                    },
-                    onSplitPane: { paneID, direction in
-                        appState.splitActivePane(direction: direction)
+                HStack(spacing: 0) {
+                    SessionWorkspaceView(
+                        session: session,
+                        ptyProcesses: appState.ptyProcesses,
+                        onActivatePane: { paneID in
+                            appState.activatePane(id: paneID, in: session)
+                        },
+                        onClosePane: { paneID in
+                            appState.closePane(id: paneID, in: session)
+                        },
+                        onSplitPane: { paneID, direction in
+                            appState.splitActivePane(direction: direction)
+                        }
+                    )
+
+                    // 파일 접근 사이드바 (Phase 11)
+                    if appState.showFileSidebar {
+                        Divider()
+                        FileSidebarView(session: session)
+                            .transition(.move(edge: .trailing))
                     }
-                )
+
+                    // Activity Stream 사이드바 (Phase 10)
+                    if appState.showActivityStream {
+                        Divider()
+                        ActivityStreamView(appState: appState)
+                            .transition(.move(edge: .trailing))
+                    }
+                }
+                .animation(.easeInOut(duration: 0.18), value: appState.showFileSidebar)
+                .animation(.easeInOut(duration: 0.18), value: appState.showActivityStream)
             } else {
                 emptyState
             }
 
-            // Status bar
+            // Status bar (Phase 9: rateLimitResetAt 전달)
             if let session = appState.activeSession {
-                AgentStatusBar(session: session)
+                AgentStatusBar(
+                    session: session,
+                    rateLimitResetAt: appState.rateLimitResetAt
+                )
             }
         }
         .background(Color(white: 0.07))
@@ -124,4 +145,3 @@ struct NewRemoteSessionView: View {
         .frame(width: 400)
     }
 }
-
