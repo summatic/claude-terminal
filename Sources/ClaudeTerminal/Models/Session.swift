@@ -72,9 +72,13 @@ final class Session: ObservableObject, Identifiable {
 
     // MARK: - Auto-split for sub-agent
 
-    /// Called when a Task tool fires: automatically split the parent agent's pane
-    func handleSubAgentSpawn(event: HookEvent) {
-        guard event.type == .preToolUse, event.toolName == "Task" else { return }
+    /// Task 툴 이벤트 수신 시 부모 에이전트 패인을 자동 분할하고 새 패인을 반환합니다.
+    ///
+    /// - Returns: 생성된 자식 패인. 이벤트 조건 미충족이거나 부모를 찾지 못하면 `nil`.
+    /// - Note: `AppState`가 반환된 패인으로 PTY를 실행합니다.
+    @discardableResult
+    func handleSubAgentSpawn(event: HookEvent) -> AgentPane? {
+        guard event.type == .preToolUse, event.toolName == "Task" else { return nil }
 
         // Find parent pane by agentID
         let parentPane: AgentPane?
@@ -84,7 +88,7 @@ final class Session: ObservableObject, Identifiable {
             parentPane = allPanes.first { $0.agentInfo == nil } ?? allPanes.first
         }
 
-        guard let parent = parentPane else { return }
+        guard let parent = parentPane else { return nil }
 
         // Choose split direction based on depth (alternating)
         let depth = layout.depth(of: parent.id) ?? 0
@@ -111,6 +115,7 @@ final class Session: ObservableObject, Identifiable {
             direction: direction,
             ratio: 0.5
         )
+        return childPane
     }
 
     /// 주어진 `agentID`를 가진 모든 패인의 에이전트 상태를 갱신합니다.

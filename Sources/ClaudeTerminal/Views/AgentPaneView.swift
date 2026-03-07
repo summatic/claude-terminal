@@ -39,7 +39,7 @@ struct AgentPaneView: View {
                 .lineLimit(1)
 
             // Connection type badge
-            if let conn = pane.connectionType as? ConnectionType, conn.isRemote {
+            if pane.connectionType.isRemote {
                 Text("SSH")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(.orange)

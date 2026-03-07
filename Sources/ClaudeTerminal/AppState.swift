@@ -69,6 +69,10 @@ final class AppState: ObservableObject {
             print("[AppState] Invalid SSH port: \(sshPort)")
             return
         }
+        guard isValidSSHPort(wsPort) else {
+            print("[AppState] Invalid WebSocket port: \(wsPort)")
+            return
+        }
         guard isValidHost(host) else {
             print("[AppState] Invalid host: \(host)")
             return
@@ -79,6 +83,7 @@ final class AppState: ObservableObject {
         sessions.append(session)
         activeSessionID = session.id
         if let pane = session.layout.allPanes.first {
+            pane.connectionType = conn  // SSH 배지 표시를 위해 pane에도 연결 유형 설정
             launchRemotePTY(for: pane, host: host, sshPort: sshPort)
         }
     }
@@ -248,51 +253,13 @@ final class AppState: ObservableObject {
     }
 
     private func handleSubAgentSpawn(event: HookEvent, in session: Session) {
-        // Determine split direction based on depth
-        let parentPane: AgentPane?
-        if let parentID = event.parentAgentID {
-            parentPane = session.allPanes.first { $0.agentInfo?.agentID == parentID }
-        } else {
-            parentPane = session.allPanes.first { $0.agentInfo == nil } ?? session.allPanes.first
+        // Session이 레이아웃 분할 로직을 담당하며 새 패인을 반환.
+        // withAnimation 내부에서 session.layout 변경이 일어나므로 애니메이션 적용.
+        let childPane = withAnimation(.spring(duration: 0.3)) {
+            session.handleSubAgentSpawn(event: event)
         }
-
-        guard let parent = parentPane else { return }
-
-        let depth = session.layout.depth(of: parent.id) ?? 0
-        let direction: SplitDirection = depth % 2 == 0 ? .horizontal : .vertical
-
-        let usedColors = session.allPanes.compactMap { $0.agentInfo?.color }
-        // Safe color selection: no force unwrap
-        let nextColor = AgentColor.allCases.first { !usedColors.contains($0) }
-            ?? AgentColor.allCases[usedColors.count % AgentColor.allCases.count]
-
-        let childInfo = AgentInfo(
-            agentID: event.agentID,
-            roleName: shortRoleName(from: event.taskDescription, index: usedColors.count),
-            status: .idle,
-            color: nextColor,
-            parentAgentID: event.parentAgentID,
-            taskDescription: event.taskDescription
-        )
-        let childPane = AgentPane(agentInfo: childInfo, title: childInfo.roleName)
-
-        withAnimation(.spring(duration: 0.3)) {
-            session.layout = session.layout.splitting(
-                paneID: parent.id,
-                with: childPane,
-                direction: direction,
-                ratio: 0.5
-            )
-        }
-
-        // Launch PTY for child pane (shell that sub-agent will inherit)
-        launchPTY(for: childPane, in: session)
-    }
-
-    private func shortRoleName(from description: String?, index: Int) -> String {
-        guard let desc = description, !desc.isEmpty else { return "sub-\(index + 1)" }
-        let words = desc.split(separator: " ").prefix(2)
-        return words.joined(separator: " ")
+        guard let pane = childPane else { return }
+        launchPTY(for: pane, in: session)
     }
 
     // isValidFilePath, isValidSSHPort, isValidHost defined in Validation.swift

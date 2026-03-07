@@ -39,11 +39,6 @@ struct ContentView: View {
         .sheet(isPresented: $appState.showNewRemoteSessionSheet) {
             NewRemoteSessionView(appState: appState)
         }
-        // Keyboard shortcuts
-        .keyboardShortcut("t", modifiers: .command)  // handled via commands
-        .onReceive(NotificationCenter.default.publisher(for: .newSession)) { _ in
-            appState.newLocalSession()
-        }
     }
 
     private var emptyState: some View {
@@ -130,8 +125,3 @@ struct NewRemoteSessionView: View {
     }
 }
 
-// MARK: - Notification Names
-
-extension Notification.Name {
-    static let newSession = Notification.Name("ClaudeTerminal.NewSession")
-}

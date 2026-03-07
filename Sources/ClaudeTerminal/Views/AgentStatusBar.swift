@@ -4,7 +4,7 @@ import SwiftUI
 
 struct AgentStatusBar: View {
 
-    let session: Session
+    @ObservedObject var session: Session
 
     var activeAgents: [AgentInfo] {
         session.allPanes.compactMap { $0.agentInfo }

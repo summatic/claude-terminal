@@ -193,31 +193,27 @@ indirect enum PaneLayout {
         case .leaf(let pane):
             return pane.id == paneID ? nil : self
 
-        case .hsplit(let left, let right, _):
-            if let newLeft = left.removing(paneID: paneID) {
-                return .hsplit(left: newLeft, right: right, ratio: 0.5)
+        case .hsplit(let left, let right, let r):
+            if left.pane(id: paneID) != nil {
+                // pane is in left subtree; nil means left was the sole leaf
+                guard let newLeft = left.removing(paneID: paneID) else { return right }
+                return .hsplit(left: newLeft, right: right, ratio: r)
             }
-            if let newRight = right.removing(paneID: paneID) {
-                return .hsplit(left: left, right: newRight, ratio: 0.5)
+            if right.pane(id: paneID) != nil {
+                guard let newRight = right.removing(paneID: paneID) else { return left }
+                return .hsplit(left: left, right: newRight, ratio: r)
             }
-            // pane was a direct child leaf
-            let leftPanes = left.allPanes.filter { $0.id != paneID }
-            let rightPanes = right.allPanes.filter { $0.id != paneID }
-            if leftPanes.isEmpty { return right }
-            if rightPanes.isEmpty { return left }
             return self
 
-        case .vsplit(let top, let bottom, _):
-            if let newTop = top.removing(paneID: paneID) {
-                return .vsplit(top: newTop, bottom: bottom, ratio: 0.5)
+        case .vsplit(let top, let bottom, let r):
+            if top.pane(id: paneID) != nil {
+                guard let newTop = top.removing(paneID: paneID) else { return bottom }
+                return .vsplit(top: newTop, bottom: bottom, ratio: r)
             }
-            if let newBottom = bottom.removing(paneID: paneID) {
-                return .vsplit(top: top, bottom: newBottom, ratio: 0.5)
+            if bottom.pane(id: paneID) != nil {
+                guard let newBottom = bottom.removing(paneID: paneID) else { return top }
+                return .vsplit(top: top, bottom: newBottom, ratio: r)
             }
-            let topPanes = top.allPanes.filter { $0.id != paneID }
-            let bottomPanes = bottom.allPanes.filter { $0.id != paneID }
-            if topPanes.isEmpty { return bottom }
-            if bottomPanes.isEmpty { return top }
             return self
         }
     }
@@ -236,7 +232,7 @@ indirect enum PaneLayout {
         case .leaf:
             return self
 
-        case .hsplit(let left, let right, _):
+        case .hsplit(let left, let right, let r):
             if left.allPanes.contains(where: { $0.id == paneID }) ||
                right.allPanes.contains(where: { $0.id == paneID }) {
                 return .hsplit(left: left, right: right, ratio: newRatio)
@@ -244,10 +240,10 @@ indirect enum PaneLayout {
             return .hsplit(
                 left: left.updatingRatio(newRatio, forSplitContaining: paneID),
                 right: right.updatingRatio(newRatio, forSplitContaining: paneID),
-                ratio: 0.5
+                ratio: r
             )
 
-        case .vsplit(let top, let bottom, _):
+        case .vsplit(let top, let bottom, let r):
             if top.allPanes.contains(where: { $0.id == paneID }) ||
                bottom.allPanes.contains(where: { $0.id == paneID }) {
                 return .vsplit(top: top, bottom: bottom, ratio: newRatio)
@@ -255,7 +251,7 @@ indirect enum PaneLayout {
             return .vsplit(
                 top: top.updatingRatio(newRatio, forSplitContaining: paneID),
                 bottom: bottom.updatingRatio(newRatio, forSplitContaining: paneID),
-                ratio: 0.5
+                ratio: r
             )
         }
     }
