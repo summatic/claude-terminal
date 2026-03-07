@@ -164,3 +164,83 @@ final class PaneLayoutTests: XCTestCase {
         XCTAssertEqual(nextColor, .blue)  // wraps to 0
     }
 }
+
+// MARK: - Remove (regression tests for fixed algorithm)
+
+final class PaneLayoutRemoveRegressionTests: XCTestCase {
+
+    // Bug fix: 이전 알고리즘은 right만 제거할 수 있었고 left 제거는 layout 변경 없이 반환했음.
+    func testRemovingLeftPaneCollapsesToRight() {
+        let pane1 = AgentPane(title: "Left")
+        let pane2 = AgentPane(title: "Right")
+        let layout = PaneLayout.leaf(pane1)
+            .splitting(paneID: pane1.id, with: pane2, direction: .horizontal)
+
+        let result = layout.removing(paneID: pane1.id)
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.allPanes.map(\.id), [pane2.id])
+    }
+
+    func testRemovingRightPaneCollapsesToLeft() {
+        let pane1 = AgentPane(title: "Left")
+        let pane2 = AgentPane(title: "Right")
+        let layout = PaneLayout.leaf(pane1)
+            .splitting(paneID: pane1.id, with: pane2, direction: .horizontal)
+
+        let result = layout.removing(paneID: pane2.id)
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.allPanes.map(\.id), [pane1.id])
+    }
+
+    func testRemovingTopPaneCollapsesToBottom() {
+        let pane1 = AgentPane(title: "Top")
+        let pane2 = AgentPane(title: "Bottom")
+        let layout = PaneLayout.leaf(pane1)
+            .splitting(paneID: pane1.id, with: pane2, direction: .vertical)
+
+        let result = layout.removing(paneID: pane1.id)
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.allPanes.map(\.id), [pane2.id])
+    }
+
+    // Bug fix: ratio가 0.5로 초기화되지 않고 기존 값이 보존되어야 함.
+    func testRemovingNestedPanePreservesParentRatio() {
+        let pane1 = AgentPane(title: "A")
+        let pane2 = AgentPane(title: "B")
+        let pane3 = AgentPane(title: "C")
+
+        // [pane1 | pane2] with ratio 0.7, then split pane2 → [pane1 | pane2/pane3]
+        var layout = PaneLayout.leaf(pane1)
+            .splitting(paneID: pane1.id, with: pane2, direction: .horizontal, ratio: 0.7)
+        layout = layout.splitting(paneID: pane2.id, with: pane3, direction: .vertical)
+
+        // Remove pane3 → should collapse right side back to pane2, outer ratio stays 0.7
+        let result = layout.removing(paneID: pane3.id)
+        if case .hsplit(_, _, let r) = result {
+            XCTAssertEqual(r, 0.7, accuracy: 0.001, "Outer split ratio must be preserved after inner pane removal")
+        } else {
+            XCTFail("Expected hsplit at root after removing nested pane")
+        }
+    }
+
+    // Bug fix: updatingRatio는 비매칭 조상 노드의 ratio도 0.5로 초기화했었음.
+    func testUpdatingRatioPreservesAncestorRatio() {
+        let pane1 = AgentPane(title: "A")
+        let pane2 = AgentPane(title: "B")
+        let pane3 = AgentPane(title: "C")
+
+        // Outer: pane1 | [pane2/pane3], outer ratio 0.3
+        var layout = PaneLayout.leaf(pane1)
+            .splitting(paneID: pane1.id, with: pane2, direction: .horizontal, ratio: 0.3)
+        layout = layout.splitting(paneID: pane2.id, with: pane3, direction: .vertical)
+
+        // Update inner (pane2/pane3) ratio → outer ratio 0.3 must not change
+        let updated = layout.updatingRatio(0.6, forSplitContaining: pane2.id)
+        if case .hsplit(_, _, let outerRatio) = updated {
+            XCTAssertEqual(outerRatio, 0.3, accuracy: 0.001, "Outer split ratio must be unaffected by inner ratio update")
+        } else {
+            XCTFail("Expected hsplit at root")
+        }
+    }
+}
+

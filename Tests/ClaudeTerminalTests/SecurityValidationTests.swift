@@ -239,3 +239,29 @@ final class URLSchemeValidationTests: XCTestCase {
         XCTAssertTrue(isSafeURLScheme("HTTPS://example.com"))
     }
 }
+
+// MARK: - wsPort Validation Regression (Bug fix: wsPort was not validated in newRemoteSession)
+
+final class WSPortValidationTests: XCTestCase {
+
+    // wsPort는 isValidSSHPort를 재사용하므로 동일한 범위 규칙이 적용됨.
+    func testDefaultWsPortIsValid() {
+        XCTAssertTrue(isValidSSHPort(9901))
+    }
+
+    func testWsPortZeroIsInvalid() {
+        XCTAssertFalse(isValidSSHPort(0))
+    }
+
+    func testWsPortOverflowIsInvalid() {
+        XCTAssertFalse(isValidSSHPort(99999))
+    }
+
+    func testWsPortNegativeIsInvalid() {
+        XCTAssertFalse(isValidSSHPort(-1))
+    }
+
+    func testWsPortMaxBoundaryIsValid() {
+        XCTAssertTrue(isValidSSHPort(65535))
+    }
+}
