@@ -17,10 +17,12 @@ struct TerminalViewRepresentable: NSViewRepresentable {
         termView.nativeBackgroundColor = NSColor(white: 0.07, alpha: 1.0)
 
         // Wire PTY output → terminal input
-        ptyProcess.onOutput = { data in
+        // Use [weak termView] to prevent retain cycle:
+        //   PTYProcess.onOutput → closure → termView → (via delegate) → PTYProcess
+        ptyProcess.onOutput = { [weak termView] data in
             DispatchQueue.main.async {
                 let bytes = [UInt8](data)
-                termView.feed(byteArray: bytes)
+                termView?.feed(byteArray: bytes)
             }
         }
 
@@ -68,9 +70,11 @@ struct TerminalViewRepresentable: NSViewRepresentable {
         func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
 
         func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
-            if let url = URL(string: link) {
-                NSWorkspace.shared.open(url)
-            }
+            // Whitelist safe URL schemes to prevent malicious terminal output from
+            // opening file:// or javascript: URLs
+            guard let url = URL(string: link),
+                  ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
+            NSWorkspace.shared.open(url)
         }
     }
 }

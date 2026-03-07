@@ -26,6 +26,17 @@ final class PTYProcess {
     private var readSource: DispatchSourceRead?
     private let queue = DispatchQueue(label: "com.claudeterminal.pty", qos: .userInteractive)
 
+    // MARK: - Lifecycle
+
+    deinit {
+        // Ensure FDs and process are cleaned up even on dealloc
+        readSource?.cancel()
+        readSource = nil
+        if masterFD >= 0 { close(masterFD); masterFD = -1 }
+        if slaveFD >= 0 { close(slaveFD); slaveFD = -1 }
+        if isRunning { Darwin.kill(pid, SIGKILL) }
+    }
+
     // MARK: - Launch
 
     /// Launch a process inside a PTY.
@@ -217,11 +228,14 @@ final class PTYProcess {
     func terminate() {
         guard isRunning else { return }
         kill(pid, SIGTERM)
+        // Clean up master FD so readSource drains and cancels
+        readSource?.cancel()
     }
 
     func kill() {
         guard isRunning else { return }
         Darwin.kill(pid, SIGKILL)
+        readSource?.cancel()
     }
 
     // MARK: - Helpers

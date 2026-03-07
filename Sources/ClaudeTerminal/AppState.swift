@@ -39,15 +39,31 @@ final class AppState: ObservableObject {
         let session = Session(name: "Session \(sessions.count + 1)", connectionType: .local)
         sessions.append(session)
         activeSessionID = session.id
-        launchPTY(for: session.layout.allPanes.first!, in: session)
+        if let pane = session.layout.allPanes.first {
+            launchPTY(for: pane, in: session)
+        }
     }
 
     func newRemoteSession(host: String, sshPort: Int = 22, wsPort: Int = 9901) {
+        // Validate SSH port range
+        guard (1...65535).contains(sshPort) else {
+            print("[AppState] Invalid SSH port: \(sshPort)")
+            return
+        }
+        // Sanitize host: reject control chars and NUL bytes
+        guard !host.isEmpty,
+              host.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else {
+            print("[AppState] Invalid host: \(host)")
+            return
+        }
+
         let conn = ConnectionType.remote(host: host, sshPort: sshPort, wsPort: wsPort)
         let session = Session(name: host, connectionType: conn)
         sessions.append(session)
         activeSessionID = session.id
-        launchRemotePTY(for: session.layout.allPanes.first!, host: host, sshPort: sshPort)
+        if let pane = session.layout.allPanes.first {
+            launchRemotePTY(for: pane, host: host, sshPort: sshPort)
+        }
     }
 
     func closeSession(id: UUID) {
@@ -104,6 +120,8 @@ final class AppState: ObservableObject {
             ptyProcesses[pane.id] = pty
         } catch {
             print("[AppState] PTY launch failed: \(error)")
+            pane.agentInfo?.status = .error
+            pane.title = "Error: \(error.localizedDescription)"
         }
     }
 
@@ -125,10 +143,15 @@ final class AppState: ObservableObject {
             ptyProcesses[pane.id] = pty
         } catch {
             print("[AppState] Remote PTY launch failed: \(error)")
+            pane.agentInfo?.status = .error
+            pane.title = "SSH Error: \(error.localizedDescription)"
         }
     }
 
     private func terminatePTY(for paneID: UUID) {
+        // Terminate but don't remove immediately; the termination callback
+        // will fire from the background queue. We nil out after sending signal
+        // so PTY is cleaned up even if no further operations reference it.
         ptyProcesses[paneID]?.terminate()
         ptyProcesses.removeValue(forKey: paneID)
     }
@@ -185,7 +208,7 @@ final class AppState: ObservableObject {
             }
 
         case .fileTouched:
-            if let path = event.filePath {
+            if let path = event.filePath, isValidFilePath(path) {
                 targetSession.recordFileTouched(agentID: event.agentID, filePath: path)
             }
 
@@ -209,8 +232,9 @@ final class AppState: ObservableObject {
         let direction: SplitDirection = depth % 2 == 0 ? .horizontal : .vertical
 
         let usedColors = session.allPanes.compactMap { $0.agentInfo?.color }
+        // Safe color selection: no force unwrap
         let nextColor = AgentColor.allCases.first { !usedColors.contains($0) }
-            ?? AgentColor(rawValue: usedColors.count % AgentColor.allCases.count)!
+            ?? AgentColor.allCases[usedColors.count % AgentColor.allCases.count]
 
         let childInfo = AgentInfo(
             agentID: event.agentID,
@@ -239,6 +263,21 @@ final class AppState: ObservableObject {
         guard let desc = description, !desc.isEmpty else { return "sub-\(index + 1)" }
         let words = desc.split(separator: " ").prefix(2)
         return words.joined(separator: " ")
+    }
+
+    /// Validate file path to prevent path traversal:
+    /// - Must be absolute
+    /// - Must not contain ".." components
+    /// - Must not access sensitive system directories
+    private func isValidFilePath(_ path: String) -> Bool {
+        guard path.hasPrefix("/") else { return false }
+        let url = URL(fileURLWithPath: path).standardized
+        let normalized = url.path
+        // Reject path traversal
+        guard !normalized.contains("..") else { return false }
+        // Reject sensitive system paths
+        let blocked = ["/etc/", "/private/etc/", "/usr/", "/bin/", "/sbin/"]
+        return !blocked.contains(where: { normalized.hasPrefix($0) })
     }
 
     // MARK: - Keyboard Commands
