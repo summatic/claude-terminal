@@ -119,6 +119,8 @@ struct PermissionRequest: Identifiable, Codable {
     let toolInput: [String: String]
     let sessionID: String?
     let requestedAt: Date
+    /// 처리 결과: true=승인, false=거절, nil=미처리
+    var wasApproved: Bool? = nil
 }
 
 // MARK: - Hook Event (Hook → App via IPC)

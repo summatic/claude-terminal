@@ -28,13 +28,15 @@ struct PaneSplitView: View {
                 HStack(spacing: 0) {
                     layoutView(for: left)
                         .frame(width: max(0, geo.size.width * ratio - 2))
-                    PaneDivider(
-                        axis: .horizontal,
-                        anchorPaneID: left.allPanes[0].id,
-                        containerSize: geo.size.width,
-                        currentRatio: ratio,
-                        session: session
-                    )
+                    if let anchorID = left.allPanes.first?.id {
+                        PaneDivider(
+                            axis: .horizontal,
+                            anchorPaneID: anchorID,
+                            containerSize: geo.size.width,
+                            currentRatio: ratio,
+                            session: session
+                        )
+                    }
                     layoutView(for: right)
                         .frame(width: max(0, geo.size.width * (1 - ratio) - 2))
                 }
@@ -45,13 +47,15 @@ struct PaneSplitView: View {
                 VStack(spacing: 0) {
                     layoutView(for: top)
                         .frame(height: max(0, geo.size.height * ratio - 2))
-                    PaneDivider(
-                        axis: .vertical,
-                        anchorPaneID: top.allPanes[0].id,
-                        containerSize: geo.size.height,
-                        currentRatio: ratio,
-                        session: session
-                    )
+                    if let anchorID = top.allPanes.first?.id {
+                        PaneDivider(
+                            axis: .vertical,
+                            anchorPaneID: anchorID,
+                            containerSize: geo.size.height,
+                            currentRatio: ratio,
+                            session: session
+                        )
+                    }
                     layoutView(for: bottom)
                         .frame(height: max(0, geo.size.height * (1 - ratio) - 2))
                 }

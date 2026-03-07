@@ -324,7 +324,9 @@ final class WebSocketEventServer {
 
         guard let event = try? decoder.decode(HookEvent.self, from: bodyData),
               event.agentID.count <= 256,
-              event.taskDescription?.count ?? 0 <= 4096 else {
+              event.parentAgentID?.count ?? 0 <= 256,
+              event.taskDescription?.count ?? 0 <= 4096,
+              event.filePath?.count ?? 0 <= 4096 else {
             sendHTTP("422 Unprocessable Entity", on: connection)
             return
         }

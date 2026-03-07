@@ -127,7 +127,7 @@ private struct PermissionCard: View {
             // Action buttons
             HStack(spacing: 6) {
                 Button("승인") {
-                    appState.resolvePermission(id: request.id)
+                    appState.resolvePermission(id: request.id, approved: true)
                 }
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.white)
@@ -138,7 +138,7 @@ private struct PermissionCard: View {
                 .buttonStyle(.plain)
 
                 Button("거절") {
-                    appState.resolvePermission(id: request.id)
+                    appState.resolvePermission(id: request.id, approved: false)
                 }
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.white.opacity(0.7))

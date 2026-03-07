@@ -174,41 +174,69 @@ private struct FileNodeRow: View {
 
 // MARK: - Tree Builder
 
+/// 내부 가변 트리 노드. 클래스(참조 타입)를 사용해 부모-자식 관계를 정확히 연결한다.
+/// Swift Dictionary는 값 타입이라 중첩 변경이 부모에 반영되지 않으므로
+/// 참조 타입 노드가 필수.
+private final class MutableTreeNode {
+    let name: String
+    let fullPath: String
+    let isDirectory: Bool
+    var children: [String: MutableTreeNode] = [:]
+    var touchedByAgentIDs: [String] = []
+
+    init(name: String, fullPath: String, isDirectory: Bool) {
+        self.name = name
+        self.fullPath = fullPath
+        self.isDirectory = isDirectory
+    }
+
+    func getOrCreate(component: String, fullPath: String, isDirectory: Bool) -> MutableTreeNode {
+        if let existing = children[component] { return existing }
+        let node = MutableTreeNode(name: component, fullPath: fullPath, isDirectory: isDirectory)
+        children[component] = node
+        return node
+    }
+
+    func toFileNode() -> FileNode {
+        var node = FileNode(name: name, fullPath: fullPath, isDirectory: isDirectory)
+        node.touchedByAgentIDs = touchedByAgentIDs
+        node.children = children.values
+            .sorted { $0.name < $1.name }
+            .map { $0.toFileNode() }
+        return node
+    }
+}
+
 /// `(agentID, filePath)` 배열을 디렉터리 트리 구조로 변환합니다.
+///
+/// `MutableTreeNode` (클래스)로 내부 트리를 구성한 뒤 불변 `FileNode`로 변환합니다.
+/// 이를 통해 Swift Dictionary 값 타입 한계(중첩 변경이 부모에 미반영)를 우회합니다.
 private func buildTree(from files: [(agentID: String, filePath: String)]) -> [FileNode] {
-    var root: [String: FileNode] = [:]
+    let root = MutableTreeNode(name: "", fullPath: "", isDirectory: true)
 
     for (agentID, filePath) in files {
-        let components = filePath.split(separator: "/").map(String.init)
+        let components = filePath.split(separator: "/").filter { !$0.isEmpty }.map(String.init)
         guard !components.isEmpty else { continue }
 
-        var currentDict = root
-        var currentPath = ""
+        var current = root
+        var pathSoFar = ""
 
         for (index, component) in components.enumerated() {
-            currentPath = currentPath.isEmpty ? component : "\(currentPath)/\(component)"
+            pathSoFar += "/" + component
             let isLast = index == components.count - 1
-
-            if var existing = currentDict[component] {
-                if isLast {
-                    existing.touchedByAgentIDs.append(agentID)
-                }
-                currentDict[component] = existing
-            } else {
-                var newNode = FileNode(
-                    name: component,
-                    fullPath: "/" + currentPath,
-                    isDirectory: !isLast
-                )
-                if isLast {
-                    newNode.touchedByAgentIDs.append(agentID)
-                }
-                currentDict[component] = newNode
+            let child = current.getOrCreate(
+                component: component,
+                fullPath: pathSoFar,
+                isDirectory: !isLast
+            )
+            if isLast {
+                child.touchedByAgentIDs.append(agentID)
             }
-
-            if isLast { root = currentDict }
+            current = child
         }
     }
 
-    return root.values.sorted { $0.name < $1.name }
+    return root.children.values
+        .sorted { $0.name < $1.name }
+        .map { $0.toFileNode() }
 }

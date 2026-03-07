@@ -173,8 +173,9 @@ final class AppState: ObservableObject {
     private func launchRemotePTY(for pane: AgentPane, host: String, sshPort: Int) {
         // Launch ssh process wrapped in PTY
         let pty = PTYProcess()
-        pty.onTermination = { [weak pane] _ in
+        pty.onTermination = { [weak self, weak pane] _ in
             Task { @MainActor in
+                _ = self  // retain for symmetry with launchPTY
                 pane?.isAlive = false
             }
         }
@@ -282,9 +283,9 @@ final class AppState: ObservableObject {
                     rateLimitResetAt = resetDate
                     // 해제 시각 도달 후 자동 클리어
                     let delay = max(0, resetDate.timeIntervalSinceNow)
-                    Task {
+                    Task { [weak self] in
                         try? await Task.sleep(nanoseconds: UInt64((delay + 1) * 1_000_000_000))
-                        await MainActor.run { self.rateLimitResetAt = nil }
+                        await MainActor.run { self?.rateLimitResetAt = nil }
                     }
                 }
             }
@@ -319,8 +320,11 @@ final class AppState: ObservableObject {
 
     // MARK: - Permission Resolution (Phase 10)
 
-    func resolvePermission(id: UUID) {
-        pendingPermissions.removeAll { $0.id == id }
+    func resolvePermission(id: UUID, approved: Bool) {
+        if let index = pendingPermissions.firstIndex(where: { $0.id == id }) {
+            pendingPermissions[index].wasApproved = approved
+            pendingPermissions.remove(at: index)
+        }
     }
 
     // isValidFilePath, isValidSSHPort, isValidHost defined in Validation.swift
