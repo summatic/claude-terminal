@@ -2,6 +2,16 @@ import SwiftUI
 
 // MARK: - App State (single source of truth)
 
+/// 앱 전체의 상태를 관리하는 단일 진실의 원천(Single Source of Truth).
+///
+/// `@MainActor`로 선언되어 모든 프로퍼티 접근과 메서드 호출이 메인 스레드에서 실행됩니다.
+/// IPC 콜백 및 PTY 종료 콜백은 `Task { @MainActor in ... }`로 메인 스레드에 전달됩니다.
+///
+/// ## 책임 범위
+/// - 세션(탭) 목록 및 활성 세션 관리
+/// - PTY 프로세스 수명주기 (`launchPTY`, `terminatePTY`)
+/// - 훅 이벤트 수신 및 레이아웃 자동 분할 트리거
+/// - 키보드 단축키 처리
 @MainActor
 final class AppState: ObservableObject {
 
@@ -35,6 +45,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Session Management
 
+    /// 새 로컬 세션을 생성하고 즉시 PTY 프로세스를 실행합니다.
     func newLocalSession() {
         let session = Session(name: "Session \(sessions.count + 1)", connectionType: .local)
         sessions.append(session)
@@ -44,6 +55,15 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 원격 SSH 세션을 생성합니다.
+    ///
+    /// 입력값을 검증한 후 `ssh -p <sshPort> <host>` 프로세스를 PTY로 실행합니다.
+    /// 유효하지 않은 호스트나 포트이면 조용히 무시합니다.
+    ///
+    /// - Parameters:
+    ///   - host: SSH 호스트명 또는 IP (제어문자 포함 불가)
+    ///   - sshPort: SSH 포트 (1–65535)
+    ///   - wsPort: 원격 훅 이벤트 수신 포트 (SSH 터널 경유)
     func newRemoteSession(host: String, sshPort: Int = 22, wsPort: Int = 9901) {
         guard isValidSSHPort(sshPort) else {
             print("[AppState] Invalid SSH port: \(sshPort)")
@@ -63,6 +83,9 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 세션을 닫고 해당 세션의 모든 PTY 프로세스를 종료합니다.
+    ///
+    /// 마지막 남은 세션은 닫을 수 없습니다 (`sessions.count > 1` 보장).
     func closeSession(id: UUID) {
         guard sessions.count > 1 else { return }
         if let session = sessions.first(where: { $0.id == id }) {
@@ -178,6 +201,16 @@ final class AppState: ObservableObject {
 
     // MARK: - Hook Event Handling
 
+    /// IPC 서버로부터 수신한 훅 이벤트를 처리합니다.
+    ///
+    /// 이벤트의 `sessionID`로 대상 세션을 찾고, 없으면 활성 세션에 적용합니다.
+    ///
+    /// | 이벤트 | 처리 |
+    /// |--------|------|
+    /// | `preToolUse(Task)` | 서브에이전트 패인 자동 분할 |
+    /// | `postToolUse(Task)` | 서브에이전트 상태 `.done` 으로 갱신 |
+    /// | `agentStatus` | 해당 에이전트 상태 갱신 |
+    /// | `fileTouched` | 파일 경로 검증 후 `touchedFiles`에 추가 |
     func handleHookEvent(_ event: HookEvent) {
         // Find the target session (by sessionID or use active)
         let targetSession: Session

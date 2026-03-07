@@ -3,12 +3,23 @@ import Network
 import CryptoKit
 
 // MARK: - IPC Server (Unix Domain Socket)
-// Receives hook events from local Claude Code processes.
-// Security:
-//   - Socket in ~/Library/Application Support (not /tmp), mode 0600
-//   - HMAC-SHA256 signed messages (shared key written to ~/.claude-terminal.pid, mode 0600)
-//   - 5s receive timeout, 1 MB max message size, field length limits
 
+/// 로컬 Claude Code 훅 스크립트로부터 이벤트를 수신하는 Unix Domain Socket 서버.
+///
+/// ## 보안 레이어
+/// - 소켓 경로: `~/Library/Application Support/ClaudeTerminal/ipc-{pid}.sock` (mode 0600)
+/// - HMAC-SHA256 서명: 앱 실행 시 256비트 키 생성, `~/.claude-terminal.pid`에 기록 (mode 0600)
+/// - 연결 당 5초 타임아웃, 최대 메시지 크기 1 MB
+/// - 필드 길이 제한: `agentID` ≤ 256자, `taskDescription`/`filePath` ≤ 4096자
+///
+/// ## 동작 흐름
+/// ```
+/// hook-notify.py 실행
+///   → HMAC 서명 생성
+///   → [4바이트 길이 헤더][AuthenticatedMessage JSON] 전송
+///   → IPCServer 수신 → HMAC 검증 → HookEvent 파싱
+///   → onEvent 콜백 → AppState.handleHookEvent()
+/// ```
 final class IPCServer {
 
     // Socket in per-user application support directory (not world-writable /tmp)
@@ -195,18 +206,32 @@ final class IPCServer {
 
 // MARK: - Authenticated Message Wrapper (local IPC)
 
+/// 로컬 IPC에서 `HookEvent` JSON을 HMAC 서명과 함께 래핑하는 구조체.
+///
+/// 훅 스크립트(`hook-notify.py`)가 JSON으로 직렬화하여 Unix Socket으로 전송합니다.
+/// `IPCServer`는 `signature`를 검증한 후에만 `payload`를 파싱합니다.
 struct AuthenticatedMessage: Codable {
-    let signature: String   // HMAC-SHA256(payload, key) hex
-    let payload: String     // JSON-encoded HookEvent string
+    /// HMAC-SHA256(payload UTF-8 bytes, hmacKey) — 소문자 hex 인코딩
+    let signature: String
+    /// JSON으로 직렬화된 `HookEvent` 문자열
+    let payload: String
 }
 
 // MARK: - WebSocket Event Server
-// Remote server hook → HTTP POST → this server → app.
-// Security:
-//   - Binds to 127.0.0.1 (loopback only; SSH tunnel required for remote)
-//   - Bearer token required in Authorization header
-//   - 5s timeout, 1 MB max body, field length limits
 
+/// 원격 서버의 Claude Code 훅이 전송하는 HTTP POST 이벤트를 수신하는 서버.
+///
+/// 이름에 "WebSocket"이 포함되어 있지만, 실제로는 간단한 HTTP/1.1 서버입니다.
+/// `hook-notify.py`가 `POST /hook`으로 `HookEvent` JSON을 전송합니다.
+///
+/// ## 보안 레이어
+/// - 루프백 바인딩 (`127.0.0.1`): 원격 접속 불가 — 반드시 SSH 터널 필요
+///   ```bash
+///   ssh -R 9901:localhost:9901 user@server
+///   ```
+/// - 32바이트 랜덤 Bearer 토큰: `Authorization: Bearer <token>` 헤더 필수
+/// - 상수 시간 비교(constant-time)로 토큰 검증 — timing attack 방어
+/// - 연결 당 5초 타임아웃, 최대 바디 크기 1 MB
 final class WebSocketEventServer {
 
     static let defaultPort: UInt16 = 9901
@@ -344,10 +369,15 @@ final class WebSocketEventServer {
 // MARK: - Data Hex Utilities
 
 extension Data {
+    /// 바이트 배열을 소문자 hex 문자열로 변환합니다. (예: `[0xDE, 0xAD]` → `"dead"`)
     var hexString: String {
         map { String(format: "%02x", $0) }.joined()
     }
 
+    /// 소문자 hex 문자열을 `Data`로 변환합니다.
+    ///
+    /// - Parameter hexString: 짝수 길이의 hex 문자열
+    /// - Returns: 변환 성공 시 `Data`, 홀수 길이이거나 유효하지 않은 문자 포함 시 `nil`
     init?(hexString: String) {
         guard hexString.count.isMultiple(of: 2) else { return nil }
         var bytes: [UInt8] = []
