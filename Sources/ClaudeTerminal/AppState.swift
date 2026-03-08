@@ -129,13 +129,15 @@ final class AppState: ObservableObject {
     // MARK: - Pane Management
 
     func splitActivePane(direction: SplitDirection) {
-        guard let session = activeSession else { return }
-        guard let paneID = session.activePaneID else { return }
+        guard let paneID = activeSession?.activePaneID else { return }
+        splitPane(id: paneID, direction: direction)
+    }
 
+    func splitPane(id: UUID, direction: SplitDirection) {
+        guard let session = sessions.first(where: { $0.allPanes.contains { $0.id == id } }) else { return }
         let newPane = AgentPane(title: "Terminal")
-        session.layout = session.layout.splitting(paneID: paneID, with: newPane, direction: direction)
+        session.layout = session.layout.splitting(paneID: id, with: newPane, direction: direction)
         session.activePaneID = newPane.id
-
         launchPTY(for: newPane, in: session)
     }
 

@@ -90,6 +90,7 @@ struct AgentPaneView: View {
         TerminalViewRepresentable(ptyProcess: ptyProcess)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(white: 0.07))
+            .simultaneousGesture(TapGesture().onEnded { onActivate?() })
     }
 
     // MARK: - Styling

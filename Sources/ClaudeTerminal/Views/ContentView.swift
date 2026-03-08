@@ -24,7 +24,7 @@ struct ContentView: View {
                             appState.closePane(id: paneID, in: session)
                         },
                         onSplitPane: { paneID, direction in
-                            appState.splitActivePane(direction: direction)
+                            appState.splitPane(id: paneID, direction: direction)
                         }
                     )
 

@@ -29,10 +29,16 @@ final class PTYProcess {
     // MARK: - Lifecycle
 
     deinit {
-        // Ensure FDs and process are cleaned up even on dealloc
-        readSource?.cancel()
+        // Ensure FDs and process are cleaned up even on dealloc.
+        // If readSource exists, its cancel handler owns masterFD and will close it.
+        // Only close masterFD directly when no readSource was ever created.
+        if let source = readSource {
+            source.cancel()
+        } else if masterFD >= 0 {
+            close(masterFD)
+            masterFD = -1
+        }
         readSource = nil
-        if masterFD >= 0 { close(masterFD); masterFD = -1 }
         if slaveFD >= 0 { close(slaveFD); slaveFD = -1 }
         if isRunning { Darwin.kill(pid, SIGKILL) }
     }
