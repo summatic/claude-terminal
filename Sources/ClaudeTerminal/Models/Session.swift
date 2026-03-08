@@ -21,6 +21,8 @@ final class Session: ObservableObject, Identifiable {
     @Published var connectionType: ConnectionType
     /// 작업 디렉터리의 Git 브랜치 이름 (Phase 12)
     @Published var gitBranch: String? = nil
+    /// `recordFileTouched` 호출 시마다 증가 — FileSidebarView 트리 캐시 무효화용
+    @Published private(set) var touchedFilesVersion: Int = 0
     let createdAt: Date
 
     init(
@@ -129,34 +131,34 @@ final class Session: ObservableObject, Identifiable {
 
     /// 주어진 `agentID`를 가진 모든 패인의 에이전트 상태를 갱신합니다.
     func updateAgentStatus(agentID: String, status: AgentStatus) {
-        allPanes
-            .filter { $0.agentInfo?.agentID == agentID }
-            .forEach { $0.agentInfo?.status = status }
+        forEachPane(agentID: agentID) { $0.agentInfo?.status = status }
     }
 
     /// 에이전트가 파일에 접근했을 때 해당 경로를 `AgentInfo.touchedFiles`에 추가합니다.
     ///
     /// Phase 5 파일트리 시각화에서 에이전트별 작업 파일을 하이라이트하는 데 사용됩니다.
     func recordFileTouched(agentID: String, filePath: String) {
-        allPanes
-            .filter { $0.agentInfo?.agentID == agentID }
-            .forEach { $0.agentInfo?.touchedFiles.insert(filePath) }
+        forEachPane(agentID: agentID) { $0.agentInfo?.touchedFiles.insert(filePath) }
+        touchedFilesVersion += 1
     }
 
     /// 에이전트가 툴을 호출할 때마다 카운터를 증가시킵니다 (Phase 8 메트릭).
     func incrementToolCall(agentID: String, toolName: String?) {
-        allPanes
-            .filter { $0.agentInfo?.agentID == agentID }
-            .forEach {
-                $0.agentInfo?.toolCallCount += 1
-                $0.agentInfo?.lastToolName = toolName
-            }
+        forEachPane(agentID: agentID) {
+            $0.agentInfo?.toolCallCount += 1
+            $0.agentInfo?.lastToolName = toolName
+        }
+    }
+
+    private func forEachPane(agentID: String, _ action: (AgentPane) -> Void) {
+        allPanes.filter { $0.agentInfo?.agentID == agentID }.forEach(action)
     }
 
     // MARK: - Git Branch (Phase 12)
 
-    /// 지정 디렉터리의 Git 브랜치를 비동기로 읽어 `gitBranch`를 갱신합니다.
-    func refreshGitBranch(in directory: String) {
+    /// 홈 디렉터리의 Git 브랜치를 비동기로 읽어 `gitBranch`를 갱신합니다.
+    func refreshGitBranch() {
+        let directory = FileManager.default.homeDirectoryForCurrentUser.path
         Task {
             let branch = await Self.readGitBranch(in: directory)
             await MainActor.run { self.gitBranch = branch }

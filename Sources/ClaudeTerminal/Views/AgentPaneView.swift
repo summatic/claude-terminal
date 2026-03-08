@@ -58,9 +58,7 @@ struct AgentPaneView: View {
                         .font(.system(size: 10))
                         .foregroundColor(.white.opacity(0.4))
                 }
-                Text(info.spawnedAt, style: .timer)
-                    .font(.system(size: 10).monospacedDigit())
-                    .foregroundColor(.white.opacity(0.3))
+                TimerDisplay(spawnedAt: info.spawnedAt)
             }
 
             // Task description (truncated)
@@ -121,6 +119,17 @@ struct AgentPaneView: View {
             return agentDisplayColor.opacity(0.7)
         }
         return Color.white.opacity(0.1)
+    }
+}
+
+// MARK: - Timer Display (isolated subview to prevent per-second full-pane redraws)
+
+private struct TimerDisplay: View {
+    let spawnedAt: Date
+    var body: some View {
+        Text(spawnedAt, style: .timer)
+            .font(.system(size: 10).monospacedDigit())
+            .foregroundColor(.white.opacity(0.3))
     }
 }
 

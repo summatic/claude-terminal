@@ -10,8 +10,15 @@ struct FileSidebarView: View {
 
     @ObservedObject var session: Session
 
-    private var rootNodes: [FileNode] {
-        buildTree(from: session.allTouchedFiles)
+    /// `session.touchedFilesVersion`이 바뀔 때만 트리를 재빌드 (렌더 최적화)
+    @State private var rootNodes: [FileNode] = []
+
+    /// agentID → Color 매핑. 매 행마다 allPanes 스캔하는 대신 한 번만 계산.
+    private var agentColorMap: [String: Color] {
+        Dictionary(uniqueKeysWithValues: session.allPanes.compactMap { pane -> (String, Color)? in
+            guard let info = pane.agentInfo else { return nil }
+            return (info.agentID, info.color.swiftUIColor)
+        })
     }
 
     var body: some View {
@@ -26,6 +33,10 @@ struct FileSidebarView: View {
         }
         .frame(width: 260)
         .background(Color(white: 0.09))
+        .onAppear { rootNodes = buildTree(from: session.allTouchedFiles) }
+        .onChange(of: session.touchedFilesVersion) { _ in
+            rootNodes = buildTree(from: session.allTouchedFiles)
+        }
     }
 
     // MARK: - Header
@@ -73,7 +84,7 @@ struct FileSidebarView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 1) {
                 ForEach(rootNodes) { node in
-                    FileNodeRow(node: node, session: session, depth: 0)
+                    FileNodeRow(node: node, agentColorMap: agentColorMap, depth: 0)
                 }
             }
             .padding(8)
@@ -98,7 +109,7 @@ struct FileNode: Identifiable {
 private struct FileNodeRow: View {
 
     let node: FileNode
-    let session: Session
+    let agentColorMap: [String: Color]
     let depth: Int
 
     @State private var isExpanded = true
@@ -143,20 +154,15 @@ private struct FileNodeRow: View {
             // 자식 노드 (디렉터리 펼쳐진 경우)
             if isExpanded {
                 ForEach(node.children) { child in
-                    FileNodeRow(node: child, session: session, depth: depth + 1)
+                    FileNodeRow(node: child, agentColorMap: agentColorMap, depth: depth + 1)
                 }
             }
         }
     }
 
-    /// agentID 목록을 해당 에이전트의 SwiftUI Color로 변환
+    /// 사전 계산된 맵으로 O(1) 조회
     private func agentColors(for agentIDs: [String]) -> [Color] {
-        let uniqueIDs = Array(Set(agentIDs))
-        return uniqueIDs.compactMap { agentID in
-            session.allPanes
-                .first { $0.agentInfo?.agentID == agentID }?
-                .agentInfo?.color.swiftUIColor
-        }
+        Array(Set(agentIDs)).compactMap { agentColorMap[$0] }
     }
 
     private func fileIcon(for name: String) -> String {

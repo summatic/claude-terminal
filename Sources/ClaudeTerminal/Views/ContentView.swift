@@ -42,8 +42,7 @@ struct ContentView: View {
                             .transition(.move(edge: .trailing))
                     }
                 }
-                .animation(.easeInOut(duration: 0.18), value: appState.showFileSidebar)
-                .animation(.easeInOut(duration: 0.18), value: appState.showActivityStream)
+                .animation(.easeInOut(duration: 0.18), value: [appState.showFileSidebar, appState.showActivityStream])
             } else {
                 emptyState
             }

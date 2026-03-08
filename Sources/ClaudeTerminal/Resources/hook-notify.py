@@ -209,16 +209,15 @@ def main():
     hook_data = read_stdin_json()
     event = build_event(hook_data)
 
+    # 레이트 리밋 이벤트 (Phase 9) — 한 번만 빌드
+    rate_limit_event = build_rate_limit_event(hook_data)
+
     if IS_REMOTE:
         send_remote(event)
-        # 레이트 리밋 이벤트도 전송 (Phase 9)
-        rate_limit_event = build_rate_limit_event(hook_data)
         if rate_limit_event:
             send_remote(rate_limit_event)
     else:
         send_local(event)
-        # 레이트 리밋 이벤트도 전송 (Phase 9)
-        rate_limit_event = build_rate_limit_event(hook_data)
         if rate_limit_event:
             send_local(rate_limit_event)
 

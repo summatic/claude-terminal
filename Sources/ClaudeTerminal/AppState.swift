@@ -48,6 +48,10 @@ final class AppState: ObservableObject {
     /// 파일 접근 사이드바 표시 여부
     @Published var showFileSidebar: Bool = false
 
+    // MARK: - Formatters
+
+    private static let isoFormatter = ISO8601DateFormatter()
+
     // MARK: - IPC Servers
 
     private let ipcServer = IPCServer()
@@ -71,8 +75,7 @@ final class AppState: ObservableObject {
             launchPTY(for: pane, in: session)
         }
         // Git 브랜치 감지 (Phase 12)
-        let workingDir = FileManager.default.homeDirectoryForCurrentUser.path
-        session.refreshGitBranch(in: workingDir)
+        session.refreshGitBranch()
     }
 
     /// 원격 SSH 세션을 생성합니다.
@@ -173,9 +176,8 @@ final class AppState: ObservableObject {
     private func launchRemotePTY(for pane: AgentPane, host: String, sshPort: Int) {
         // Launch ssh process wrapped in PTY
         let pty = PTYProcess()
-        pty.onTermination = { [weak self, weak pane] _ in
+        pty.onTermination = { [weak pane] _ in
             Task { @MainActor in
-                _ = self  // retain for symmetry with launchPTY
                 pane?.isAlive = false
             }
         }
@@ -278,8 +280,7 @@ final class AppState: ObservableObject {
         case .rateLimited:
             // 레이트 리밋 타이머 설정 (Phase 9)
             if let resetStr = event.rateLimitResetAt {
-                let formatter = ISO8601DateFormatter()
-                if let resetDate = formatter.date(from: resetStr) {
+                if let resetDate = Self.isoFormatter.date(from: resetStr) {
                     rateLimitResetAt = resetDate
                     // 해제 시각 도달 후 자동 클리어
                     let delay = max(0, resetDate.timeIntervalSinceNow)
