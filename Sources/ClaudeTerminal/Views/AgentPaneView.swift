@@ -14,6 +14,7 @@ struct AgentPaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             paneHeader
+                .onTapGesture { onActivate?() }
             terminalBody
         }
         .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -21,7 +22,6 @@ struct AgentPaneView: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(borderColor, lineWidth: isActive ? 1.5 : 0.5)
         )
-        .onTapGesture { onActivate?() }
     }
 
     // MARK: - Header
